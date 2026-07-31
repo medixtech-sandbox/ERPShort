@@ -77,6 +77,10 @@ h1{font-size:39px;margin:8px 0 8px;font-weight:900;letter-spacing:.2px;color:inh
       <button class="ghost" onclick="clearPlatform()">Change Stage / Platform</button>
     </div>
 
+    <div class="button-row" style="margin-top:20px">
+      <button class="secondary" type="button" onclick="randomizeAssessment()">Randomize</button>
+    </div>
+
     <div class="grid">
       <div class="card">
         <h2>Organization & Project Profile</h2>
@@ -897,6 +901,47 @@ function resetAssessment(){
   window.scrollTo({top:0,behavior:'smooth'});
   setTimeout(()=>el('org')?.focus(),350);
 }
+function randomizeAssessment(){
+  const pick=items=>items[Math.floor(Math.random()*items.length)];
+  const chance=probability=>Math.random()<probability;
+  const orgPrefixes=['North Valley','Summit','Lakeside','Pioneer','Evergreen','Riverbend','Central Plains','Blue Ridge','Oakwood','Horizon'];
+  const orgSuffixes=['Health System','Medical Center','Regional Health','Healthcare Network','Community Hospital','Health Alliance'];
+  const firstNames=['Alex','Jordan','Taylor','Morgan','Casey','Riley','Jamie','Cameron'];
+  const lastNames=['Smith','Johnson','Davis','Miller','Wilson','Anderson','Thomas','Clark'];
+  const titles=['Chief Information Officer','ERP Program Director','VP of Finance','Director of Applications','PMO Director','Chief Human Resources Officer'];
+  const employeeSizes=[350,650,1200,2500,4800,7500,12000,18500,26000,42000];
+
+  selectedVendor='other';
+  selectedJourneyStage='General Assessment';
+  evaluatedErpSystems=[];
+  if(!document.querySelector('.moduleCheck'))renderVendorScope();
+  if(!document.querySelector('#checklist input[type=checkbox]'))renderChecklist();
+
+  const orgName=`${pick(orgPrefixes)} ${pick(orgSuffixes)}`;
+  if(el('org'))el('org').value=orgName;
+  if(el('orgType'))el('orgType').value=pick([...el('orgType').options].map(o=>o.value).filter(Boolean));
+  if(el('employees'))el('employees').value=pick(employeeSizes);
+  if(el('timeline'))el('timeline').value=pick([...el('timeline').options].map(o=>o.value).filter(Boolean));
+
+  document.querySelectorAll('.moduleCheck').forEach(box=>box.checked=chance(.6));
+  if(!document.querySelector('.moduleCheck:checked')){
+    const modules=[...document.querySelectorAll('.moduleCheck')];
+    if(modules.length)pick(modules).checked=true;
+  }
+  document.querySelectorAll('#checklist input[type=checkbox]').forEach(box=>box.checked=chance(.55));
+
+  const first=pick(firstNames),last=pick(lastNames);
+  if(el('firstName'))el('firstName').value=first;
+  if(el('lastName'))el('lastName').value=last;
+  if(el('contactTitle'))el('contactTitle').value=pick(titles);
+  if(el('email'))el('email').value=`${first}.${last}${Math.floor(Math.random()*900+100)}@example.org`.toLowerCase();
+  if(el('phone'))el('phone').value=`(555) ${Math.floor(Math.random()*800+100)}-${String(Math.floor(Math.random()*10000)).padStart(4,'0')}`;
+
+  document.querySelectorAll('.field-error').forEach(x=>x.classList.remove('field-error'));
+  document.querySelectorAll('.error-message,.validation-banner,.success-banner').forEach(x=>x.classList.remove('show'));
+  calculate();
+}
+
 function quickInit(){
  selectedVendor='other';selectedJourneyStage='General Assessment';
  renderVendorScope();renderChecklist();calculate();
