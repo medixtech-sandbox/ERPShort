@@ -7,6 +7,7 @@
 <!-- Internal version tracking: ERPQuick V1.0 -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{
   --primary:#0075C9;
@@ -532,27 +533,192 @@ function executiveReportElement(payload){
 async function downloadPDFReport(){
   try{
     calculate();
-    if(typeof html2pdf==='undefined')throw new Error('PDF library did not load. Refresh the page and try again.');
+    if(!window.jspdf||!window.jspdf.jsPDF)throw new Error('The PDF library did not load. Refresh the page and try again.');
+
     const payload=buildAssessmentPayload();
-    const report=executiveReportElement(payload);
-    report.style.position='absolute';
-    report.style.left='0';
-    report.style.top=`${window.scrollY}px`;
-    report.style.zIndex='-1';
-    report.style.pointerEvents='none';
-    document.body.appendChild(report);
-    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF({unit:'pt',format:'letter',orientation:'portrait'});
+    const pageWidth=doc.internal.pageSize.getWidth();
+    const pageHeight=doc.internal.pageSize.getHeight();
+    const margin=48;
+    const contentWidth=pageWidth-(margin*2);
+    let y=46;
+
+    const colors={navy:[0,36,84],blue:[0,117,201],mint:[99,230,184],text:[16,24,40],muted:[71,84,103],line:[216,227,237]};
+    const scores=payload.scores;
+    const workstreams=scores.workstreams||[];
+    const answered=workstreams.reduce((sum,w)=>sum+w.score,0);
+    const possible=workstreams.reduce((sum,w)=>sum+w.maxScore,0);
+    const completion=possible?Math.round((answered/possible)*100):0;
+    const scope=payload.scope.selectedCategories||[];
+    const strengths=workstreams.filter(w=>w.score>0).sort((a,b)=>b.percentComplete-a.percentComplete||b.weight-a.weight).slice(0,4);
+    const gaps=workstreams.filter(w=>w.gap>0).sort((a,b)=>b.gap-a.gap||b.weight-a.weight).slice(0,5);
+    const checked=(payload.checklistResponses||[]).flatMap(group=>group.answers||[]).filter(a=>a.checked);
+
+    function clean(text){
+      return String(text??'').replace(/\s+/g,' ').trim();
+    }
+    function ensureSpace(height=60){
+      if(y+height>pageHeight-44){
+        doc.addPage();
+        y=48;
+      }
+    }
+    function addWrapped(text,{size=10,bold=false,color=colors.text,indent=0,after=6,lineHeight=1.35}={}){
+      const value=clean(text);
+      if(!value)return;
+      doc.setFont('helvetica',bold?'bold':'normal');
+      doc.setFontSize(size);
+      doc.setTextColor(...color);
+      const lines=doc.splitTextToSize(value,contentWidth-indent);
+      const height=lines.length*size*lineHeight;
+      ensureSpace(height+after);
+      doc.text(lines,margin+indent,y);
+      y+=height+after;
+    }
+    function heading(text){
+      ensureSpace(36);
+      y+=4;
+      doc.setDrawColor(...colors.line);
+      doc.line(margin,y,pageWidth-margin,y);
+      y+=17;
+      addWrapped(text,{size:14,bold:true,color:colors.navy,after:8});
+    }
+    function bullet(text){
+      const value=clean(text);
+      if(!value)return;
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(...colors.text);
+      const lines=doc.splitTextToSize(value,contentWidth-18);
+      const height=lines.length*12.5;
+      ensureSpace(height+4);
+      doc.text('•',margin,y);
+      doc.text(lines,margin+14,y);
+      y+=height+4;
+    }
+    function labelValue(label,value){
+      const val=clean(value)||'Not provided';
+      ensureSpace(18);
+      doc.setFontSize(9.5);
+      doc.setTextColor(...colors.muted);
+      doc.setFont('helvetica','bold');
+      doc.text(label,margin,y);
+      doc.setFont('helvetica','normal');
+      doc.setTextColor(...colors.text);
+      const lines=doc.splitTextToSize(val,contentWidth-150);
+      doc.text(lines,margin+150,y);
+      y+=Math.max(16,lines.length*12);
+    }
+    function textItems(raw){
+      return clean(raw).split(/\n+/).map(x=>x.replace(/^[•\-✓]+\s*/,'').trim()).filter(Boolean);
+    }
+
+    // Header
+    doc.setFillColor(...colors.navy);
+    doc.rect(0,0,pageWidth,112,'F');
+    doc.setFillColor(...colors.mint);
+    doc.rect(0,108,pageWidth,4,'F');
+    doc.setTextColor(...colors.mint);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.text('MEDIX ERP READINESS SNAPSHOT™',margin,34);
+    doc.setTextColor(255,255,255);
+    doc.setFontSize(22);
+    const orgName=clean(payload.organization.name)||'Executive Summary';
+    doc.text(doc.splitTextToSize(orgName,contentWidth),margin,62);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(11);
+    doc.text('Concise Executive Summary of Current Assessment Responses',margin,94);
+    y=136;
+
+    // KPI row
+    const kpis=[
+      ['Readiness Score',`${scores.readinessScore}/100`],
+      ['Status',scores.readinessStatus],
+      ['Overall Risk',scores.overallRisk],
+      ['Form Complete',`${completion}%`]
+    ];
+    const boxGap=8;
+    const boxWidth=(contentWidth-(boxGap*3))/4;
+    kpis.forEach(([label,value],i)=>{
+      const x=margin+i*(boxWidth+boxGap);
+      doc.setDrawColor(...colors.line);
+      doc.roundedRect(x,y,boxWidth,54,7,7,'S');
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(i===0?16:11);
+      doc.setTextColor(...(i===0?colors.blue:colors.navy));
+      const valueLines=doc.splitTextToSize(clean(value),boxWidth-12);
+      doc.text(valueLines,x+7,y+20);
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(7.5);
+      doc.setTextColor(...colors.muted);
+      doc.text(label,x+7,y+45);
+    });
+    y+=72;
+
+    const topStrength=strengths[0]?.workstream||'No clear strength has been recorded yet';
+    const topGap=gaps[0]?.workstream||'No benchmark gap is currently identified';
+    const scopeSentence=scope.length?`The selected ERP scope includes ${scope.join(', ')}.`:'No ERP scope categories have been selected yet.';
+    const narrative=`${orgName} currently has an ERP readiness score of ${scores.readinessScore}/100 and is classified as ${scores.readinessStatus}, with ${String(scores.overallRisk).toLowerCase()} overall project risk. The assessment is ${completion}% complete. ${scopeSentence} The strongest recorded area is ${topStrength}; the highest-priority gap is ${topGap}. Leadership should confirm scope, assign accountable owners, and close the highest-weighted gaps before finalizing implementation commitments.`;
+    heading('Executive Overview');
+    addWrapped(narrative,{size:10.5,after:4});
+    addWrapped('This report reflects all information entered at the time of download. Blank fields and unanswered checklist items do not prevent report generation.',{size:8.5,color:colors.muted,after:4});
+
+    heading('Organization & Project Profile');
+    labelValue('Organization',payload.organization.name);
+    labelValue('Organization Type',payload.organization.organizationType);
+    labelValue('Number of Employees',payload.organization.numberOfEmployees);
+    labelValue('Target Timeline',payload.organization.targetTimeline);
+    labelValue('Checklist Responses',`${answered} of ${possible} selected`);
+
+    heading('Selected ERP Scope');
+    if(scope.length)scope.forEach(item=>bullet(item));
+    else bullet('No ERP scope categories selected.');
+
+    heading('Current Strengths');
+    if(strengths.length){
+      strengths.forEach(w=>bullet(`${w.workstream}: ${w.score}/${w.maxScore} readiness items addressed (${w.percentComplete}%).`));
+    }else bullet('No checklist strengths have been recorded yet.');
+
+    heading('Priority Gaps');
+    if(gaps.length){
+      gaps.forEach(w=>{
+        const rec=sections.find(s=>s.name===w.workstream)?.rec||'Continue readiness planning in this area.';
+        bullet(`${w.workstream}: ${w.gap} item${w.gap===1?'':'s'} below benchmark. ${rec}`);
+      });
+    }else bullet('No benchmark gaps are currently identified.');
+
+    heading('Executive Findings');
+    const findings=textItems(payload.executiveOutputs.findings);
+    (findings.length?findings:['No additional executive findings are available from the current responses.']).slice(0,6).forEach(bullet);
+
+    heading('Financial & Operational Impact');
+    const impacts=textItems(payload.executiveOutputs.impact);
+    (impacts.length?impacts:['No major financial or operational exposure areas were identified from the current responses.']).slice(0,6).forEach(bullet);
+
+    heading('Readiness Items Addressed');
+    if(checked.length)checked.slice(0,20).forEach(item=>bullet(item.question));
+    else bullet('No readiness checklist items have been selected.');
+
+    heading('Recommended Medix Support Areas');
+    const opportunities=textItems(payload.executiveOutputs.medixOpportunityReport)
+      .filter(x=>x.startsWith('✓')||/ERP Advisory|PMO Support|Staff Augmentation|Foundational Design Advisory|Data Conversion|Integration Support|Testing & Training|Hypercare|Optimization/.test(x));
+    (opportunities.length?opportunities:['Recommendations will become more specific as additional assessment responses are entered.']).slice(0,8).forEach(bullet);
+
+    // Footer on every page
+    const pageCount=doc.getNumberOfPages();
+    for(let i=1;i<=pageCount;i++){
+      doc.setPage(i);
+      doc.setFont('helvetica','normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...colors.muted);
+      doc.text(`Generated ${new Date(payload.submittedAt).toLocaleString()}  •  ERPQuick`,margin,pageHeight-24);
+      doc.text(`Page ${i} of ${pageCount}`,pageWidth-margin,pageHeight-24,{align:'right'});
+    }
+
     const org=(payload.organization.name||'Organization').replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'')||'Organization';
-    const options={
-      margin:[0.25,0.25,0.25,0.25],
-      filename:`${org}_ERP_Readiness_Executive_Summary.pdf`,
-      image:{type:'jpeg',quality:0.98},
-      html2canvas:{scale:2,useCORS:true,logging:false,backgroundColor:'#ffffff'},
-      jsPDF:{unit:'in',format:'letter',orientation:'portrait'},
-      pagebreak:{mode:['css','legacy'],avoid:['tr','td']}
-    };
-    await html2pdf().set(options).from(report).save();
-    report.remove();
+    doc.save(`${org}_ERP_Readiness_Executive_Summary.pdf`);
   }catch(error){
     const existing=el('pdfErrorBanner');
     if(existing)existing.remove();
