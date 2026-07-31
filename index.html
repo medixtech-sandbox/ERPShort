@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Medix ERP Readiness Snapshot™</title>
-<!-- Internal version tracking: ERPQuick V1.5 -->
+<!-- Internal version tracking: ERPQuick V1.6 -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -632,40 +632,53 @@ async function downloadPDFReport(){
       }catch(e){return null;}
     }
 
-    // Branded header matching the assessment
-    doc.setFillColor(...colors.navy);
-    doc.rect(0,0,pageWidth,126,'F');
-    doc.setFillColor(...colors.blue2);
-    doc.rect(pageWidth*0.58,0,pageWidth*0.42,126,'F');
-    doc.setFillColor(...colors.mint);
-    doc.rect(0,121,pageWidth,5,'F');
+    // White brand header matching the assessment
     const logoData=await getLogoData();
+    const headerX=margin;
+    const headerY=28;
+    const headerH=78;
+    doc.setFillColor(...colors.white);
+    doc.setDrawColor(...colors.line);
+    doc.roundedRect(headerX,headerY,contentWidth,headerH,12,12,'FD');
     if(logoData){
-      try{doc.addImage(logoData,'PNG',margin,19,142,38,undefined,'FAST');}catch(e){}
+      try{doc.addImage(logoData,'PNG',headerX+15,headerY+15,132,42,undefined,'FAST');}catch(e){}
     }else{
-      doc.setTextColor(...colors.white);
+      doc.setTextColor(...colors.navy);
       doc.setFont('helvetica','bold');
-      doc.setFontSize(22);
-      doc.text('MEDIX',margin,43);
-      doc.setTextColor(...colors.mint);
-      doc.setFontSize(9);
-      doc.text('TECHNOLOGY',margin+2,56);
+      doc.setFontSize(20);
+      doc.text('MEDIX',headerX+18,headerY+35);
+      doc.setTextColor(...colors.blue);
+      doc.setFontSize(8);
+      doc.text('TECHNOLOGY',headerX+20,headerY+48);
     }
-    doc.setTextColor(...colors.mint);
+    doc.setFillColor(...colors.mint);
+    doc.roundedRect(headerX+158,headerY+14,4,48,2,2,'F');
+    doc.setTextColor(...colors.navy);
     doc.setFont('helvetica','bold');
-    doc.setFontSize(9);
-    doc.text('HEALTHCARE ERP ADVISORY PORTAL',margin,76);
-    doc.setTextColor(...colors.white);
-    doc.setFontSize(21);
-    const orgName=clean(payload.organization.name)||'Executive Summary';
-    doc.text(doc.splitTextToSize(orgName,contentWidth-20),margin,100);
+    doc.setFontSize(11.5);
+    doc.text('ERP Readiness Snapshot™',headerX+174,headerY+31);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor(...colors.muted);
+    const sub=doc.splitTextToSize('Healthcare-focused assessment. Data-driven insights. Smarter ERP decisions.',220);
+    doc.text(sub,headerX+174,headerY+47);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...colors.mint);
+    doc.text('People. Technology. Solutions.',headerX+contentWidth-16,headerY+41,{align:'right'});
+
+    const orgName=clean(payload.organization.name)||'Organization Not Provided';
+    y=135;
+    doc.setTextColor(...colors.navy);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(22);
+    doc.text('Executive Summary',margin,y);
+    y+=17;
     doc.setFont('helvetica','normal');
     doc.setFontSize(9.5);
-    doc.text('ERP Readiness Snapshot™ | Executive Summary',pageWidth-margin,34,{align:'right'});
-    doc.setTextColor(...colors.mint);
-    doc.setFont('helvetica','bold');
-    doc.text('People. Technology. Solutions.',pageWidth-margin,53,{align:'right'});
-    y=149;
+    doc.setTextColor(...colors.muted);
+    doc.text(`${orgName}  •  ${new Date(payload.submittedAt).toLocaleDateString()}`,margin,y);
+    y+=24;
 
     // KPI row
     const kpis=[
@@ -743,6 +756,29 @@ async function downloadPDFReport(){
     if(checked.length)checked.slice(0,20).forEach(item=>bullet(item.question));
     else bullet('No readiness checklist items have been selected.');
 
+    heading('Readiness by Category');
+    const categoryRows=workstreams.map(w=>({name:w.workstream,value:w.percentComplete}));
+    categoryRows.forEach(row=>{
+      ensureSpace(30);
+      const barX=margin+190;
+      const barW=contentWidth-235;
+      const pct=Math.max(0,Math.min(100,Number(row.value)||0));
+      const fill=pct>=75?colors.green:pct>=55?colors.yellow:colors.red;
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(...colors.navy);
+      const labelLines=doc.splitTextToSize(row.name,175);
+      doc.text(labelLines,margin,y+9);
+      doc.setFillColor(229,231,235);
+      doc.roundedRect(barX,y,barW,10,5,5,'F');
+      if(pct>0){doc.setFillColor(...fill);doc.roundedRect(barX,y,Math.max(4,barW*pct/100),10,5,5,'F');}
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(8);
+      doc.setTextColor(...colors.muted);
+      doc.text(`${pct}%`,pageWidth-margin,y+9,{align:'right'});
+      y+=Math.max(22,labelLines.length*10+5);
+    });
+
     heading('Recommended Medix Support Areas');
     const supportCatalog=[
       ['ERP Advisory','Business case, readiness, governance, scope, and TCO validation.'],
@@ -800,6 +836,16 @@ async function downloadPDFReport(){
         if(col===1||index===Math.min(recommended.length,8)-1)y+=cardHeight+cardGap;
       });
     }
+
+    heading('Recommended Immediate Actions');
+    const nextSteps=[];
+    gaps.slice(0,5).forEach(w=>{
+      const rec=sections.find(s=>s.name===w.workstream)?.rec||`Advance readiness planning for ${w.workstream}.`;
+      nextSteps.push(rec);
+    });
+    if(!scope.length)nextSteps.unshift('Confirm the ERP functional and technical scope before finalizing staffing, timeline, and partner commitments.');
+    if(!nextSteps.length)nextSteps.push('Validate the current readiness position with executive sponsors and convert the assessment into a sequenced implementation roadmap.');
+    nextSteps.slice(0,5).forEach((step,index)=>bullet(`${index+1}. ${step}`));
 
     // Footer on every page
     const pageCount=doc.getNumberOfPages();
