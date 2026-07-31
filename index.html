@@ -345,7 +345,7 @@ function validateFields(includeContact=false){let ok=true;const fields=[...docum
 function getScores(){const raw=[];let weighted=0;sections.forEach((s,i)=>{const c=checkedCount(i);const max=sectionMax(i);raw.push({workstream:s.name,short:s.short,score:c,maxScore:max,percentComplete:sectionPercent(i,c),benchmark:s.benchmark,weight:effectiveWeight(i),gap:Math.max(0,s.benchmark-c)});weighted+=(c/max)*effectiveWeight(i)});const mods=selectedModules();const eco=ecosystemCount();const cpx=complexityPoints();const scopePenalty=Math.min(14, Math.floor(mods.length/4)+Math.floor(eco/5)+Math.floor(cpx/3));const readiness=Math.max(0,Math.round(weighted-scopePenalty));return{readinessScore:readiness,readinessStatus:readiness>=75?'On Track':readiness>=55?'Needs Attention':'Priority Gap',projectedSuccessProbability:Math.min(96,Math.max(15,Math.round(readiness*.86+11))),overallRisk:riskLevel(readiness)[0],hiddenProjectComplexityIndex:cpx+mods.length+eco,workstreams:raw}}
 function selectedEcosystem(){return [...document.querySelectorAll('.ecoCheck:checked')].map(x=>x.parentElement.innerText.trim())}
 function checklistResponses(){return sections.map((s,i)=>({workstream:s.name,answers:s.questions.map((q,j)=>({question:q,checked:el(`q${i}_${j}`).checked}))}))}
-function buildAssessmentPayload(){const scores=getScores();return{application:'Medix ERP Readiness Snapshot™',version:'ERPQuick V1.0',submittedAt:new Date().toISOString(),organization:{name:el('org').value.trim(),organizationType:el('orgType').value,numberOfEmployees:parseInt(el('employees').value,10),currentErpPlatform:el('legacy').value,currentEhr:el('currentEhr').value||null,projectStage:el('stage').value,targetTimeline:el('timeline').value,targetErpPlatform:vendors[selectedVendor]?.name||null,erpSystemsBeingEvaluated:evaluatedErpSystems.map(k=>vendors[k]?.name).filter(Boolean)},contact:{firstName:el('firstName').value.trim(),lastName:el('lastName').value.trim(),title:el('contactTitle').value.trim(),businessEmail:el('email').value.trim(),phone:el('phone').value.trim()||null},scope:{selectedModules:selectedModules().map(m=>({name:m.name,category:m.kind,group:vendors[selectedVendor].groups[m.group].name})),healthcareEcosystem:selectedEcosystem()},scores,checklistResponses:checklistResponses(),executiveOutputs:{summary:el('execSummary').innerText,findings:el('findings').innerText,impact:el('impact').innerText,medixOpportunityReport:el('services').innerText}}}
+function buildAssessmentPayload(){const scores=getScores();return{application:'Medix ERP Readiness Snapshot™',version:'ERPQuick V1.2',submittedAt:new Date().toISOString(),organization:{name:el('org').value.trim(),organizationType:el('orgType').value,numberOfEmployees:parseInt(el('employees').value,10),currentErpPlatform:el('legacy').value,currentEhr:el('currentEhr').value||null,projectStage:el('stage').value,targetTimeline:el('timeline').value,targetErpPlatform:vendors[selectedVendor]?.name||null,erpSystemsBeingEvaluated:evaluatedErpSystems.map(k=>vendors[k]?.name).filter(Boolean)},contact:{firstName:el('firstName').value.trim(),lastName:el('lastName').value.trim(),title:el('contactTitle').value.trim(),businessEmail:el('email').value.trim(),phone:el('phone').value.trim()||null},scope:{selectedModules:selectedModules().map(m=>({name:m.name,category:m.kind,group:vendors[selectedVendor].groups[m.group].name})),healthcareEcosystem:selectedEcosystem()},scores,checklistResponses:checklistResponses(),executiveOutputs:{summary:el('execSummary').innerText,findings:el('findings').innerText,impact:el('impact').innerText,medixOpportunityReport:el('services').innerText}}}
 function submitAssessment(){
  if(!validateFields(true)){el('saveAssessmentCard').scrollIntoView({behavior:'smooth',block:'start'});return}
  calculate();
@@ -463,7 +463,7 @@ function executiveReportElement(payload){
   const workstreams=scores.workstreams||[];
   const strengths=workstreams.filter(w=>w.score>0).sort((a,b)=>b.percentComplete-a.percentComplete||b.weight-a.weight).slice(0,5);
   const gaps=workstreams.filter(w=>w.gap>0).sort((a,b)=>b.gap-a.gap||b.weight-a.weight).slice(0,5);
-  const checkedResponses=(payload.checklistResponses||[]).filter(r=>r.checked);
+  const checkedResponses=(payload.checklistResponses||[]).flatMap(group=>group.answers||[]).filter(r=>r.checked);
   const root=document.createElement('div');
   root.id='pdfExecutiveReport';
   root.style.cssText='width:7.7in;background:#fff;color:#101828;font-family:Arial,Helvetica,sans-serif;padding:0;margin:0;';
@@ -471,6 +471,9 @@ function executiveReportElement(payload){
   const gapHtml=gaps.length?gaps.map(w=>`<li><strong>${reportSafe(w.workstream)}:</strong> ${w.gap} item${w.gap===1?'':'s'} below benchmark. ${reportSafe(sections.find(s=>s.name===w.workstream)?.rec||'Continue readiness planning in this area.')}</li>`).join(''):'<li>No benchmark gaps are currently identified.</li>';
   const scopeHtml=selectedCategories.length?selectedCategories.map(x=>`<span style="display:inline-block;margin:3px 5px 3px 0;padding:6px 9px;border-radius:999px;background:#EAF6FE;color:#002454;font-size:11px;font-weight:700">${reportSafe(x)}</span>`).join(''):'<span style="color:#475467">No ERP scope categories selected.</span>';
   const answeredHtml=checkedResponses.length?checkedResponses.slice(0,20).map(r=>`<li>${reportSafe(r.question)}</li>`).join(''):'<li>No readiness checklist items have been selected.</li>';
+  const topStrength=strengths[0]?.workstream||'No clear strength identified yet';
+  const topGap=gaps[0]?.workstream||'No benchmark gap identified';
+  const executiveNarrative=`${reportValue(payload.organization.name,'The organization')} currently has a readiness score of ${scores.readinessScore}/100 and is classified as ${scores.readinessStatus}, with ${scores.overallRisk.toLowerCase()} overall project risk. The assessment is ${completion}% complete. ${selectedCategories.length?`The defined ERP scope includes ${selectedCategories.join(', ')}.`:'ERP scope categories have not yet been selected.'} The strongest area currently recorded is ${topStrength}, while the highest-priority gap is ${topGap}. Leadership should use this snapshot to confirm scope, assign accountable owners, and close the highest-weighted readiness gaps before finalizing implementation commitments.`;
   root.innerHTML=`
     <div style="background:linear-gradient(135deg,#002454,#004582 58%,#0075C9);color:#fff;padding:24px 26px;border-bottom:5px solid #63E6B8">
       <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#63E6B8;font-weight:800">Medix ERP Readiness Snapshot™</div>
@@ -488,7 +491,7 @@ function executiveReportElement(payload){
       </table>
       <div style="border:1px solid #D8E3ED;border-radius:14px;padding:15px;margin-bottom:14px;page-break-inside:avoid">
         <h2 style="font-size:17px;color:#002454;margin:0 0 9px">Executive Overview</h2>
-        <p style="font-size:12px;line-height:1.55;margin:0">${reportSafe(payload.executiveOutputs.summary)}</p>
+        <p style="font-size:12px;line-height:1.55;margin:0">${reportSafe(executiveNarrative)}</p>
         <p style="font-size:11px;color:#475467;margin:9px 0 0">This report reflects the information entered at the time of download. Blank fields and unanswered checklist items do not prevent report generation.</p>
       </div>
       <div style="border:1px solid #D8E3ED;border-radius:14px;padding:15px;margin-bottom:14px;page-break-inside:avoid">
@@ -532,10 +535,13 @@ async function downloadPDFReport(){
     if(typeof html2pdf==='undefined')throw new Error('PDF library did not load. Refresh the page and try again.');
     const payload=buildAssessmentPayload();
     const report=executiveReportElement(payload);
-    report.style.position='fixed';
-    report.style.left='-10000px';
-    report.style.top='0';
+    report.style.position='absolute';
+    report.style.left='0';
+    report.style.top=`${window.scrollY}px`;
+    report.style.zIndex='-1';
+    report.style.pointerEvents='none';
     document.body.appendChild(report);
+    await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
     const org=(payload.organization.name||'Organization').replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'')||'Organization';
     const options={
       margin:[0.25,0.25,0.25,0.25],
