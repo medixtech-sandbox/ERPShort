@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Medix ERP Readiness Snapshot™</title>
-<!-- Internal version tracking: ERPQuick V1.0 -->
+<!-- Internal version tracking: ERPQuick V1.5 -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -346,7 +346,7 @@ function validateFields(includeContact=false){let ok=true;const fields=[...docum
 function getScores(){const raw=[];let weighted=0;sections.forEach((s,i)=>{const c=checkedCount(i);const max=sectionMax(i);raw.push({workstream:s.name,short:s.short,score:c,maxScore:max,percentComplete:sectionPercent(i,c),benchmark:s.benchmark,weight:effectiveWeight(i),gap:Math.max(0,s.benchmark-c)});weighted+=(c/max)*effectiveWeight(i)});const mods=selectedModules();const eco=ecosystemCount();const cpx=complexityPoints();const scopePenalty=Math.min(14, Math.floor(mods.length/4)+Math.floor(eco/5)+Math.floor(cpx/3));const readiness=Math.max(0,Math.round(weighted-scopePenalty));return{readinessScore:readiness,readinessStatus:readiness>=75?'On Track':readiness>=55?'Needs Attention':'Priority Gap',projectedSuccessProbability:Math.min(96,Math.max(15,Math.round(readiness*.86+11))),overallRisk:riskLevel(readiness)[0],hiddenProjectComplexityIndex:cpx+mods.length+eco,workstreams:raw}}
 function selectedEcosystem(){return [...document.querySelectorAll('.ecoCheck:checked')].map(x=>x.parentElement.innerText.trim())}
 function checklistResponses(){return sections.map((s,i)=>({workstream:s.name,answers:s.questions.map((q,j)=>({question:q,checked:el(`q${i}_${j}`).checked}))}))}
-function buildAssessmentPayload(){const scores=getScores();return{application:'Medix ERP Readiness Snapshot™',version:'ERPQuick V1.2',submittedAt:new Date().toISOString(),organization:{name:el('org').value.trim(),organizationType:el('orgType').value,numberOfEmployees:parseInt(el('employees').value,10),currentErpPlatform:el('legacy').value,currentEhr:el('currentEhr').value||null,projectStage:el('stage').value,targetTimeline:el('timeline').value,targetErpPlatform:vendors[selectedVendor]?.name||null,erpSystemsBeingEvaluated:evaluatedErpSystems.map(k=>vendors[k]?.name).filter(Boolean)},contact:{firstName:el('firstName').value.trim(),lastName:el('lastName').value.trim(),title:el('contactTitle').value.trim(),businessEmail:el('email').value.trim(),phone:el('phone').value.trim()||null},scope:{selectedModules:selectedModules().map(m=>({name:m.name,category:m.kind,group:vendors[selectedVendor].groups[m.group].name})),healthcareEcosystem:selectedEcosystem()},scores,checklistResponses:checklistResponses(),executiveOutputs:{summary:el('execSummary').innerText,findings:el('findings').innerText,impact:el('impact').innerText,medixOpportunityReport:el('services').innerText}}}
+function buildAssessmentPayload(){const scores=getScores();return{application:'Medix ERP Readiness Snapshot™',version:'ERPQuick V1.4',submittedAt:new Date().toISOString(),organization:{name:el('org').value.trim(),organizationType:el('orgType').value,numberOfEmployees:parseInt(el('employees').value,10),currentErpPlatform:el('legacy').value,currentEhr:el('currentEhr').value||null,projectStage:el('stage').value,targetTimeline:el('timeline').value,targetErpPlatform:vendors[selectedVendor]?.name||null,erpSystemsBeingEvaluated:evaluatedErpSystems.map(k=>vendors[k]?.name).filter(Boolean)},contact:{firstName:el('firstName').value.trim(),lastName:el('lastName').value.trim(),title:el('contactTitle').value.trim(),businessEmail:el('email').value.trim(),phone:el('phone').value.trim()||null},scope:{selectedModules:selectedModules().map(m=>({name:m.name,category:m.kind,group:vendors[selectedVendor].groups[m.group].name})),healthcareEcosystem:selectedEcosystem()},scores,checklistResponses:checklistResponses(),executiveOutputs:{summary:el('execSummary').innerText,findings:el('findings').innerText,impact:el('impact').innerText,medixOpportunityReport:el('services').innerText}}}
 function submitAssessment(){
  if(!validateFields(true)){el('saveAssessmentCard').scrollIntoView({behavior:'smooth',block:'start'});return}
  calculate();
@@ -544,7 +544,7 @@ async function downloadPDFReport(){
     const contentWidth=pageWidth-(margin*2);
     let y=46;
 
-    const colors={navy:[0,36,84],blue:[0,117,201],mint:[99,230,184],text:[16,24,40],muted:[71,84,103],line:[216,227,237]};
+    const colors={navy:[0,36,84],blue:[0,117,201],blue2:[0,69,130],mint:[99,230,184],sky:[234,246,254],ice:[248,252,255],text:[16,24,40],muted:[71,84,103],line:[216,227,237],green:[46,125,50],yellow:[249,168,37],red:[198,40,40],orange:[239,108,0],white:[255,255,255]};
     const scores=payload.scores;
     const workstreams=scores.workstreams||[];
     const answered=workstreams.reduce((sum,w)=>sum+w.score,0);
@@ -577,12 +577,18 @@ async function downloadPDFReport(){
       y+=height+after;
     }
     function heading(text){
-      ensureSpace(36);
-      y+=4;
+      ensureSpace(42);
+      y+=5;
+      doc.setFillColor(...colors.sky);
       doc.setDrawColor(...colors.line);
-      doc.line(margin,y,pageWidth-margin,y);
-      y+=17;
-      addWrapped(text,{size:14,bold:true,color:colors.navy,after:8});
+      doc.roundedRect(margin,y,contentWidth,28,6,6,'FD');
+      doc.setFillColor(...colors.blue);
+      doc.roundedRect(margin,y,5,28,3,3,'F');
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(12.5);
+      doc.setTextColor(...colors.navy);
+      doc.text(text,margin+15,y+19);
+      y+=39;
     }
     function bullet(text){
       const value=clean(text);
@@ -614,23 +620,52 @@ async function downloadPDFReport(){
       return clean(raw).split(/\n+/).map(x=>x.replace(/^[•\-✓]+\s*/,'').trim()).filter(Boolean);
     }
 
-    // Header
+    async function getLogoData(){
+      const img=document.querySelector('.medix-logo');
+      if(!img)return null;
+      try{
+        if(!img.complete)await new Promise((resolve,reject)=>{img.addEventListener('load',resolve,{once:true});img.addEventListener('error',reject,{once:true});setTimeout(reject,2500)});
+        const canvas=document.createElement('canvas');
+        canvas.width=img.naturalWidth||600; canvas.height=img.naturalHeight||160;
+        const ctx=canvas.getContext('2d'); ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        return canvas.toDataURL('image/png');
+      }catch(e){return null;}
+    }
+
+    // Branded header matching the assessment
     doc.setFillColor(...colors.navy);
-    doc.rect(0,0,pageWidth,112,'F');
+    doc.rect(0,0,pageWidth,126,'F');
+    doc.setFillColor(...colors.blue2);
+    doc.rect(pageWidth*0.58,0,pageWidth*0.42,126,'F');
     doc.setFillColor(...colors.mint);
-    doc.rect(0,108,pageWidth,4,'F');
+    doc.rect(0,121,pageWidth,5,'F');
+    const logoData=await getLogoData();
+    if(logoData){
+      try{doc.addImage(logoData,'PNG',margin,19,142,38,undefined,'FAST');}catch(e){}
+    }else{
+      doc.setTextColor(...colors.white);
+      doc.setFont('helvetica','bold');
+      doc.setFontSize(22);
+      doc.text('MEDIX',margin,43);
+      doc.setTextColor(...colors.mint);
+      doc.setFontSize(9);
+      doc.text('TECHNOLOGY',margin+2,56);
+    }
     doc.setTextColor(...colors.mint);
     doc.setFont('helvetica','bold');
-    doc.setFontSize(10);
-    doc.text('MEDIX ERP READINESS SNAPSHOT™',margin,34);
-    doc.setTextColor(255,255,255);
-    doc.setFontSize(22);
+    doc.setFontSize(9);
+    doc.text('HEALTHCARE ERP ADVISORY PORTAL',margin,76);
+    doc.setTextColor(...colors.white);
+    doc.setFontSize(21);
     const orgName=clean(payload.organization.name)||'Executive Summary';
-    doc.text(doc.splitTextToSize(orgName,contentWidth),margin,62);
+    doc.text(doc.splitTextToSize(orgName,contentWidth-20),margin,100);
     doc.setFont('helvetica','normal');
-    doc.setFontSize(11);
-    doc.text('Concise Executive Summary of Current Assessment Responses',margin,94);
-    y=136;
+    doc.setFontSize(9.5);
+    doc.text('ERP Readiness Snapshot™ | Executive Summary',pageWidth-margin,34,{align:'right'});
+    doc.setTextColor(...colors.mint);
+    doc.setFont('helvetica','bold');
+    doc.text('People. Technology. Solutions.',pageWidth-margin,53,{align:'right'});
+    y=149;
 
     // KPI row
     const kpis=[
@@ -643,19 +678,26 @@ async function downloadPDFReport(){
     const boxWidth=(contentWidth-(boxGap*3))/4;
     kpis.forEach(([label,value],i)=>{
       const x=margin+i*(boxWidth+boxGap);
+      let accent=colors.blue;
+      if(label==='Status')accent=scores.readinessScore>=75?colors.green:scores.readinessScore>=55?colors.yellow:colors.red;
+      if(label==='Overall Risk')accent=String(scores.overallRisk).toLowerCase()==='low'?colors.green:String(scores.overallRisk).toLowerCase()==='medium'?colors.yellow:String(scores.overallRisk).toLowerCase()==='elevated'?colors.orange:colors.red;
+      if(label==='Form Complete')accent=completion>=75?colors.green:completion>=40?colors.yellow:colors.red;
+      doc.setFillColor(...colors.ice);
       doc.setDrawColor(...colors.line);
-      doc.roundedRect(x,y,boxWidth,54,7,7,'S');
+      doc.roundedRect(x,y,boxWidth,58,7,7,'FD');
+      doc.setFillColor(...accent);
+      doc.roundedRect(x,y,boxWidth,5,3,3,'F');
       doc.setFont('helvetica','bold');
-      doc.setFontSize(i===0?16:11);
-      doc.setTextColor(...(i===0?colors.blue:colors.navy));
+      doc.setFontSize(i===0?16:10.5);
+      doc.setTextColor(...accent);
       const valueLines=doc.splitTextToSize(clean(value),boxWidth-12);
-      doc.text(valueLines,x+7,y+20);
+      doc.text(valueLines,x+7,y+25);
       doc.setFont('helvetica','normal');
       doc.setFontSize(7.5);
       doc.setTextColor(...colors.muted);
-      doc.text(label,x+7,y+45);
+      doc.text(label,x+7,y+49);
     });
-    y+=72;
+    y+=76;
 
     const topStrength=strengths[0]?.workstream||'No clear strength has been recorded yet';
     const topGap=gaps[0]?.workstream||'No benchmark gap is currently identified';
@@ -702,9 +744,62 @@ async function downloadPDFReport(){
     else bullet('No readiness checklist items have been selected.');
 
     heading('Recommended Medix Support Areas');
-    const opportunities=textItems(payload.executiveOutputs.medixOpportunityReport)
-      .filter(x=>x.startsWith('✓')||/ERP Advisory|PMO Support|Staff Augmentation|Foundational Design Advisory|Data Conversion|Integration Support|Testing & Training|Hypercare|Optimization/.test(x));
-    (opportunities.length?opportunities:['Recommendations will become more specific as additional assessment responses are entered.']).slice(0,8).forEach(bullet);
+    const supportCatalog=[
+      ['ERP Advisory','Business case, readiness, governance, scope, and TCO validation.'],
+      ['PMO Support','Project managers, workstream leads, RAID management, and decision support.'],
+      ['Staff Augmentation','Functional SMEs, analysts, trainers, project coordinators, and backfill resources.'],
+      ['Foundational Design Advisory','Operating model, organization design, Chart of Accounts planning, position and job rationalization, and labor-impact planning.'],
+      ['Data Conversion','Data cleansing, migration, reconciliation, reporting, and archive support.'],
+      ['Integration Support','Interface analysts, testing support, EHR/ERP integration, and identity and access support.'],
+      ['Testing & Training','Test coordination, UAT support, training development, and super-user support.'],
+      ['Hypercare / MedixFlex','Post-go-live stabilization, ticket support, release support, and run-and-maintain services.'],
+      ['Optimization','Reporting, workflow optimization, release management, adoption, and value realization.']
+    ];
+    const opportunityText=String(payload.executiveOutputs.medixOpportunityReport||'');
+    let recommended=supportCatalog.filter(([name])=>{
+      const escaped=name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      return new RegExp('✓\\s*'+escaped,'i').test(opportunityText);
+    });
+    // Fallback for browsers that do not preserve the checkmark in innerText.
+    if(!recommended.length){
+      recommended=supportCatalog.filter(([name])=>opportunityText.toLowerCase().includes(name.toLowerCase())).slice(0,6);
+    }
+    if(!recommended.length){
+      addWrapped('Recommendations will become more specific as additional assessment responses are entered.',{size:9.5,color:colors.muted});
+    }else{
+      const cardGap=10;
+      const cardWidth=(contentWidth-cardGap)/2;
+      const cardHeight=78;
+      recommended.slice(0,8).forEach(([name,description],index)=>{
+        const col=index%2;
+        if(col===0)ensureSpace(cardHeight+cardGap);
+        const x=margin+col*(cardWidth+cardGap);
+        const cardY=y;
+        doc.setFillColor(...colors.ice);
+        doc.setDrawColor(...colors.line);
+        doc.roundedRect(x,cardY,cardWidth,cardHeight,8,8,'FD');
+        doc.setFillColor(...colors.blue);
+        doc.roundedRect(x,cardY,cardWidth,4,3,3,'F');
+        doc.setFillColor(...colors.mint);
+        doc.circle(x+18,cardY+20,8,'F');
+        doc.setTextColor(...colors.navy);
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(8);
+        doc.text('✓',x+15.3,cardY+22.8);
+        doc.setTextColor(...colors.navy);
+        doc.setFont('helvetica','bold');
+        doc.setFontSize(10.5);
+        const titleLines=doc.splitTextToSize(name,cardWidth-48);
+        doc.text(titleLines,x+34,cardY+23);
+        doc.setTextColor(...colors.muted);
+        doc.setFont('helvetica','normal');
+        doc.setFontSize(8.5);
+        const descY=cardY+40+(titleLines.length-1)*10;
+        const descLines=doc.splitTextToSize(description,cardWidth-20);
+        doc.text(descLines,x+10,descY);
+        if(col===1||index===Math.min(recommended.length,8)-1)y+=cardHeight+cardGap;
+      });
+    }
 
     // Footer on every page
     const pageCount=doc.getNumberOfPages();
@@ -713,7 +808,7 @@ async function downloadPDFReport(){
       doc.setFont('helvetica','normal');
       doc.setFontSize(8);
       doc.setTextColor(...colors.muted);
-      doc.text(`Generated ${new Date(payload.submittedAt).toLocaleString()}  •  ERPQuick`,margin,pageHeight-24);
+      doc.text(`Medix ERP Readiness Snapshot™  •  Generated ${new Date(payload.submittedAt).toLocaleString()}`,margin,pageHeight-24);
       doc.text(`Page ${i} of ${pageCount}`,pageWidth-margin,pageHeight-24,{align:'right'});
     }
 
