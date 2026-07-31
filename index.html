@@ -450,24 +450,139 @@ function buildAssessmentPayload(){
  const scores=getScores();
  return{application:'Medix ERP Readiness Snapshot™',project:'ERPQuick',version:'ERPQuick V1.0',submittedAt:new Date().toISOString(),organization:{name:el('org').value.trim(),organizationType:el('orgType').value,numberOfEmployees:parseInt(el('employees').value,10)||null,targetTimeline:el('timeline').value},contact:{firstName:el('firstName').value.trim(),lastName:el('lastName').value.trim(),title:el('contactTitle').value.trim(),businessEmail:el('email').value.trim(),phone:el('phone').value.trim()||null},scope:{selectedCategories:selectedModules().map(m=>m.name)},scores,checklistResponses:checklistResponses(),executiveOutputs:{summary:el('execSummary').innerText,findings:el('findings').innerText,impact:el('impact').innerText,medixOpportunityReport:el('services').innerText}};
 }
-function downloadPDFReport(){
-  calculate();
-  const org=(el('org').value||'Organization').replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'');
-  const source=el('assessment');
-  const buttons=[...source.querySelectorAll('.button-row')];
-  buttons.forEach(b=>b.dataset.oldDisplay=b.style.display,b.style.display='none');
-  const options={margin:[0.3,0.3,0.3,0.3],filename:`${org}_ERP_Readiness_Snapshot.pdf`,image:{type:'jpeg',quality:0.96},html2canvas:{scale:1.5,useCORS:true,logging:false},jsPDF:{unit:'in',format:'letter',orientation:'portrait'},pagebreak:{mode:['avoid-all','css','legacy']}};
-  html2pdf().set(options).from(source).save().finally(()=>buttons.forEach(b=>b.style.display=b.dataset.oldDisplay||''));
+function reportValue(value,fallback='Not provided'){
+  const cleaned=String(value??'').trim();
+  return cleaned||fallback;
+}
+function executiveReportElement(payload){
+  const scores=payload.scores;
+  const answered=scores.workstreams.reduce((sum,w)=>sum+w.score,0);
+  const possible=scores.workstreams.reduce((sum,w)=>sum+w.maxScore,0);
+  const completion=possible?Math.round((answered/possible)*100):0;
+  const selectedCategories=payload.scope.selectedCategories||[];
+  const workstreams=scores.workstreams||[];
+  const strengths=workstreams.filter(w=>w.score>0).sort((a,b)=>b.percentComplete-a.percentComplete||b.weight-a.weight).slice(0,5);
+  const gaps=workstreams.filter(w=>w.gap>0).sort((a,b)=>b.gap-a.gap||b.weight-a.weight).slice(0,5);
+  const checkedResponses=(payload.checklistResponses||[]).filter(r=>r.checked);
+  const root=document.createElement('div');
+  root.id='pdfExecutiveReport';
+  root.style.cssText='width:7.7in;background:#fff;color:#101828;font-family:Arial,Helvetica,sans-serif;padding:0;margin:0;';
+  const strengthHtml=strengths.length?strengths.map(w=>`<li><strong>${reportSafe(w.workstream)}:</strong> ${w.score}/${w.maxScore} items addressed (${w.percentComplete}%).</li>`).join(''):'<li>No checklist strengths have been recorded yet.</li>';
+  const gapHtml=gaps.length?gaps.map(w=>`<li><strong>${reportSafe(w.workstream)}:</strong> ${w.gap} item${w.gap===1?'':'s'} below benchmark. ${reportSafe(sections.find(s=>s.name===w.workstream)?.rec||'Continue readiness planning in this area.')}</li>`).join(''):'<li>No benchmark gaps are currently identified.</li>';
+  const scopeHtml=selectedCategories.length?selectedCategories.map(x=>`<span style="display:inline-block;margin:3px 5px 3px 0;padding:6px 9px;border-radius:999px;background:#EAF6FE;color:#002454;font-size:11px;font-weight:700">${reportSafe(x)}</span>`).join(''):'<span style="color:#475467">No ERP scope categories selected.</span>';
+  const answeredHtml=checkedResponses.length?checkedResponses.slice(0,20).map(r=>`<li>${reportSafe(r.question)}</li>`).join(''):'<li>No readiness checklist items have been selected.</li>';
+  root.innerHTML=`
+    <div style="background:linear-gradient(135deg,#002454,#004582 58%,#0075C9);color:#fff;padding:24px 26px;border-bottom:5px solid #63E6B8">
+      <div style="font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#63E6B8;font-weight:800">Medix ERP Readiness Snapshot™</div>
+      <h1 style="margin:7px 0 4px;font-size:27px">${reportSafe(reportValue(payload.organization.name,'Executive Summary'))}</h1>
+      <div style="font-size:14px;opacity:.95">Executive Summary of Current Assessment Responses</div>
+    </div>
+    <div style="padding:20px 24px">
+      <table style="width:100%;border-collapse:separate;border-spacing:8px 0;margin:0 -8px 16px">
+        <tr>
+          <td style="width:25%;border:1px solid #D8E3ED;border-radius:12px;padding:12px"><div style="font-size:25px;font-weight:800;color:#0075C9">${scores.readinessScore}</div><div style="font-size:10px;color:#475467">Readiness Score</div></td>
+          <td style="width:25%;border:1px solid #D8E3ED;border-radius:12px;padding:12px"><div style="font-size:20px;font-weight:800;color:#002454">${reportSafe(scores.readinessStatus)}</div><div style="font-size:10px;color:#475467">Readiness Status</div></td>
+          <td style="width:25%;border:1px solid #D8E3ED;border-radius:12px;padding:12px"><div style="font-size:20px;font-weight:800;color:#002454">${reportSafe(scores.overallRisk)}</div><div style="font-size:10px;color:#475467">Overall Risk</div></td>
+          <td style="width:25%;border:1px solid #D8E3ED;border-radius:12px;padding:12px"><div style="font-size:20px;font-weight:800;color:#002454">${completion}%</div><div style="font-size:10px;color:#475467">Form Completion</div></td>
+        </tr>
+      </table>
+      <div style="border:1px solid #D8E3ED;border-radius:14px;padding:15px;margin-bottom:14px;page-break-inside:avoid">
+        <h2 style="font-size:17px;color:#002454;margin:0 0 9px">Executive Overview</h2>
+        <p style="font-size:12px;line-height:1.55;margin:0">${reportSafe(payload.executiveOutputs.summary)}</p>
+        <p style="font-size:11px;color:#475467;margin:9px 0 0">This report reflects the information entered at the time of download. Blank fields and unanswered checklist items do not prevent report generation.</p>
+      </div>
+      <div style="border:1px solid #D8E3ED;border-radius:14px;padding:15px;margin-bottom:14px;page-break-inside:avoid">
+        <h2 style="font-size:17px;color:#002454;margin:0 0 9px">Organization & Project Profile</h2>
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <tr><td style="padding:5px 8px 5px 0;color:#475467;width:32%">Organization</td><td style="padding:5px 0;font-weight:700">${reportSafe(reportValue(payload.organization.name))}</td></tr>
+          <tr><td style="padding:5px 8px 5px 0;color:#475467">Organization Type</td><td style="padding:5px 0;font-weight:700">${reportSafe(reportValue(payload.organization.organizationType))}</td></tr>
+          <tr><td style="padding:5px 8px 5px 0;color:#475467">Number of Employees</td><td style="padding:5px 0;font-weight:700">${reportSafe(payload.organization.numberOfEmployees||'Not provided')}</td></tr>
+          <tr><td style="padding:5px 8px 5px 0;color:#475467">Target Timeline</td><td style="padding:5px 0;font-weight:700">${reportSafe(reportValue(payload.organization.targetTimeline))}</td></tr>
+          <tr><td style="padding:5px 8px 5px 0;color:#475467">Checklist Responses</td><td style="padding:5px 0;font-weight:700">${answered} of ${possible} selected</td></tr>
+        </table>
+      </div>
+      <div style="border:1px solid #D8E3ED;border-radius:14px;padding:15px;margin-bottom:14px;page-break-inside:avoid">
+        <h2 style="font-size:17px;color:#002454;margin:0 0 9px">Selected ERP Scope</h2>${scopeHtml}
+      </div>
+      <table style="width:100%;border-collapse:separate;border-spacing:10px 0;margin:0 -10px 14px">
+        <tr>
+          <td style="width:50%;vertical-align:top;border:1px solid #D8E3ED;border-radius:14px;padding:15px;page-break-inside:avoid"><h2 style="font-size:17px;color:#002454;margin:0 0 9px">Current Strengths</h2><ul style="font-size:11px;line-height:1.45;padding-left:18px;margin:0">${strengthHtml}</ul></td>
+          <td style="width:50%;vertical-align:top;border:1px solid #D8E3ED;border-radius:14px;padding:15px;page-break-inside:avoid"><h2 style="font-size:17px;color:#002454;margin:0 0 9px">Priority Gaps</h2><ul style="font-size:11px;line-height:1.45;padding-left:18px;margin:0">${gapHtml}</ul></td>
+        </tr>
+      </table>
+      <div style="border:1px solid #D8E3ED;border-radius:14px;padding:15px;margin-bottom:14px">
+        <h2 style="font-size:17px;color:#002454;margin:0 0 9px">Executive Findings</h2><ul style="font-size:11px;line-height:1.5;padding-left:18px;margin:0">${reportListFromText(payload.executiveOutputs.findings)}</ul>
+      </div>
+      <div style="border:1px solid #D8E3ED;border-radius:14px;padding:15px;margin-bottom:14px">
+        <h2 style="font-size:17px;color:#002454;margin:0 0 9px">Financial & Operational Impact</h2><ul style="font-size:11px;line-height:1.5;padding-left:18px;margin:0">${reportListFromText(payload.executiveOutputs.impact)}</ul>
+      </div>
+      <div style="border:1px solid #D8E3ED;border-radius:14px;padding:15px;margin-bottom:14px">
+        <h2 style="font-size:17px;color:#002454;margin:0 0 9px">Readiness Items Addressed</h2><ul style="font-size:11px;line-height:1.45;padding-left:18px;margin:0">${answeredHtml}</ul>
+      </div>
+      <div style="border:1px solid #D8E3ED;border-radius:14px;padding:15px;margin-bottom:14px">
+        <h2 style="font-size:17px;color:#002454;margin:0 0 9px">Medix Opportunity Report</h2><ul style="font-size:11px;line-height:1.5;padding-left:18px;margin:0">${reportListFromText(payload.executiveOutputs.medixOpportunityReport)}</ul>
+      </div>
+      <div style="font-size:9px;color:#667085;text-align:center;margin-top:15px">Generated ${reportSafe(new Date(payload.submittedAt).toLocaleString())} • ${reportSafe(payload.version)}</div>
+    </div>`;
+  return root;
+}
+async function downloadPDFReport(){
+  try{
+    calculate();
+    if(typeof html2pdf==='undefined')throw new Error('PDF library did not load. Refresh the page and try again.');
+    const payload=buildAssessmentPayload();
+    const report=executiveReportElement(payload);
+    report.style.position='fixed';
+    report.style.left='-10000px';
+    report.style.top='0';
+    document.body.appendChild(report);
+    const org=(payload.organization.name||'Organization').replace(/[^a-z0-9]+/gi,'_').replace(/^_|_$/g,'')||'Organization';
+    const options={
+      margin:[0.25,0.25,0.25,0.25],
+      filename:`${org}_ERP_Readiness_Executive_Summary.pdf`,
+      image:{type:'jpeg',quality:0.98},
+      html2canvas:{scale:2,useCORS:true,logging:false,backgroundColor:'#ffffff'},
+      jsPDF:{unit:'in',format:'letter',orientation:'portrait'},
+      pagebreak:{mode:['css','legacy'],avoid:['tr','td']}
+    };
+    await html2pdf().set(options).from(report).save();
+    report.remove();
+  }catch(error){
+    const existing=el('pdfErrorBanner');
+    if(existing)existing.remove();
+    const banner=document.createElement('div');
+    banner.id='pdfErrorBanner';
+    banner.className='validation-banner show';
+    banner.textContent=`The PDF could not be created: ${error.message}`;
+    const firstButton=document.querySelector('button[onclick="downloadPDFReport()"]');
+    firstButton?.closest('.card')?.prepend(banner);
+    console.error(error);
+  }
 }
 function resetAssessment(){
- document.querySelectorAll('#assessment input[type=checkbox]').forEach(x=>x.checked=false);
- ['org','employees','firstName','lastName','contactTitle','email','phone'].forEach(id=>{if(el(id))el(id).value=''});
- ['timeline','orgType'].forEach(id=>{if(el(id))el(id).selectedIndex=0});
- el('saveSuccess').classList.remove('show');
- document.querySelectorAll('.field-error').forEach(x=>x.classList.remove('field-error'));
- document.querySelectorAll('.error-message').forEach(x=>x.classList.remove('show'));
- calculate();
- window.scrollTo({top:0,behavior:'smooth'});
+  document.querySelectorAll('#assessment input, #assessment select, #assessment textarea').forEach(field=>{
+    if(field.type==='checkbox'||field.type==='radio')field.checked=false;
+    else if(field.tagName==='SELECT')field.selectedIndex=0;
+    else field.value='';
+  });
+  selectedVendor='other';
+  selectedJourneyStage='General Assessment';
+  evaluatedErpSystems=[];
+  window.medixLastAssessmentSubmission=null;
+  try{
+    localStorage.removeItem('medixErpTransformationAdvisorLastSubmission');
+    localStorage.removeItem('medixErpReadinessSnapshotLastSubmission');
+  }catch(e){}
+  document.querySelectorAll('.field-error').forEach(x=>x.classList.remove('field-error'));
+  document.querySelectorAll('.error-message,.validation-banner,.success-banner').forEach(x=>x.classList.remove('show'));
+  document.querySelectorAll('.platform-card').forEach(x=>x.classList.remove('selected'));
+  if(el('continueEvaluationButton'))el('continueEvaluationButton').disabled=true;
+  if(radarChart){radarChart.destroy();radarChart=null;}
+  renderVendorScope();
+  renderChecklist();
+  calculate();
+  window.scrollTo({top:0,behavior:'smooth'});
+  setTimeout(()=>el('org')?.focus(),350);
 }
 function quickInit(){
  selectedVendor='other';selectedJourneyStage='General Assessment';
